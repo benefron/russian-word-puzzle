@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: russian-crossword-gen
+    name: russian-word-puzzle
     runtime: node
     buildCommand: npm install && npm run build
     startCommand: npm start
