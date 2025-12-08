@@ -1,64 +1,224 @@
-import Image from "next/image";
+'use client';
+
+import React, { useState } from 'react';
+import { CrosswordGenerator, WordSearchGenerator, PlacedWord, WordItem } from '@/lib/generator';
+import { exportCrosswordPDF, exportWordSearchPDF } from '@/lib/exporter';
+import { CrosswordPreview } from '@/components/CrosswordPreview';
+import { WordSearchPreview } from '@/components/WordSearchPreview';
 
 export default function Home() {
+  const [mode, setMode] = useState<'crossword' | 'wordsearch'>('crossword');
+  const [difficulty, setDifficulty] = useState<number>(1);
+  const [count, setCount] = useState(10);
+  const [width, setWidth] = useState(15);
+  const [height, setHeight] = useState(15);
+  const [showSolution, setShowSolution] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState('Ready');
+
+  const [puzzleData, setPuzzleData] = useState<{ grid: string[][], placedWords: PlacedWord[] } | null>(null);
+
+  const handleGenerate = async () => {
+    setLoading(true);
+    setStatus('Fetching words...');
+    setPuzzleData(null);
+
+    try {
+      let words: WordItem[] = [];
+
+      const res = await fetch(`/api/words?count=${count}&difficulty=${difficulty}`);
+      if (!res.ok) throw new Error('Failed to fetch words');
+      words = await res.json();
+
+      if (words.length === 0) {
+        setStatus('No words found.');
+        setLoading(false);
+        return;
+      }
+
+      setStatus('Generating puzzle...');
+      
+      if (mode === 'crossword') {
+        const generator = new CrosswordGenerator(width, height);
+        const result = generator.generate(words);
+        setPuzzleData(result);
+        if (result.placedWords.length === 0) {
+            setStatus('Could not place any words. Try increasing grid size.');
+        } else {
+            setStatus(`Generated with ${result.placedWords.length} words.`);
+        }
+      } else {
+        const generator = new WordSearchGenerator(width, height);
+        const result = generator.generate(words);
+        setPuzzleData(result);
+        setStatus(`Generated with ${result.placedWords.length} words.`);
+      }
+
+    } catch (error) {
+      console.error(error);
+      setStatus('Error occurred.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExport = async () => {
+    if (!puzzleData) return;
+    
+    if (mode === 'crossword') {
+        await exportCrosswordPDF(puzzleData.grid, puzzleData.placedWords);
+    } else {
+        await exportWordSearchPDF(puzzleData.grid, puzzleData.placedWords);
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
+      {/* Sidebar */}
+      <aside className="w-full md:w-80 bg-white shadow-md p-6 flex flex-col gap-6 z-10">
+        <h1 className="text-2xl font-bold text-blue-800">Russian Puzzle Gen</h1>
+        
+        {/* Mode */}
+        <div>
+            <h2 className="font-bold mb-2">Mode</h2>
+            <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" checked={mode === 'crossword'} onChange={() => setMode('crossword')} />
+                    Crossword
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" checked={mode === 'wordsearch'} onChange={() => setMode('wordsearch')} />
+                    Word Search
+                </label>
+            </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+
+        <hr />
+
+        {/* Difficulty */}
+        <div>
+            <h2 className="font-bold mb-2">Difficulty Level: {difficulty}</h2>
+            <input 
+                type="range" 
+                min="1" 
+                max="5" 
+                value={difficulty} 
+                onChange={(e) => setDifficulty(Number(e.target.value))}
+                className="w-full"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span>Easy (Common)</span>
+                <span>Hard (Random)</span>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+                Level 1: 100% Common Words<br/>
+                Level 3: 50% Common / 50% Random<br/>
+                Level 5: 100% Random Complex Words
+            </p>
         </div>
+
+        <hr />
+
+        {/* Settings */}
+        <div className="space-y-4">
+            <h2 className="font-bold">Settings</h2>
+            
+            <div>
+                <label className="block text-sm font-medium mb-1">Word Count</label>
+                <input 
+                    type="number" 
+                    value={count} 
+                    onChange={(e) => setCount(Number(e.target.value))}
+                    className="w-full border rounded px-2 py-1"
+                    min={1} max={50}
+                />
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium mb-1">Grid Width</label>
+                <input 
+                    type="number" 
+                    value={width} 
+                    onChange={(e) => setWidth(Number(e.target.value))}
+                    className="w-full border rounded px-2 py-1"
+                    min={5} max={30}
+                />
+            </div>
+            <div>
+                <label className="block text-sm font-medium mb-1">Grid Height</label>
+                <input 
+                    type="number" 
+                    value={height} 
+                    onChange={(e) => setHeight(Number(e.target.value))}
+                    className="w-full border rounded px-2 py-1"
+                    min={5} max={30}
+                />
+            </div>
+        </div>
+
+        <hr />
+
+        {/* Actions */}
+        <div className="flex flex-col gap-3">
+            <button 
+                onClick={handleGenerate} 
+                disabled={loading}
+                className="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 disabled:opacity-50 font-bold"
+            >
+                {loading ? 'Generating...' : 'Generate'}
+            </button>
+
+            <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                    type="checkbox" 
+                    checked={showSolution} 
+                    onChange={(e) => setShowSolution(e.target.checked)} 
+                />
+                Show Solution
+            </label>
+
+            <button 
+                onClick={handleExport}
+                disabled={!puzzleData}
+                className="bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 disabled:opacity-50"
+            >
+                Export to PDF
+            </button>
+        </div>
+
+        <div className="mt-auto text-sm text-gray-500">
+            Status: {status}
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 p-8 overflow-auto">
+        {mode === 'crossword' && puzzleData && (
+            <CrosswordPreview 
+                grid={puzzleData.grid} 
+                placedWords={puzzleData.placedWords} 
+                showSolution={showSolution} 
+            />
+        )}
+        {mode === 'wordsearch' && puzzleData && (
+            <WordSearchPreview 
+                grid={puzzleData.grid} 
+                placedWords={puzzleData.placedWords} 
+                showSolution={showSolution} 
+            />
+        )}
+        
+        {!puzzleData && !loading && (
+            <div className="h-full flex items-center justify-center text-gray-400 text-xl">
+                Click "Generate" to start
+            </div>
+        )}
+
+        {loading && (
+            <div className="h-full flex items-center justify-center text-blue-500 text-xl animate-pulse">
+                Working...
+            </div>
+        )}
       </main>
     </div>
   );
