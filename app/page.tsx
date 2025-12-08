@@ -76,7 +76,7 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
       {/* Sidebar */}
       <aside className="w-full md:w-80 bg-white shadow-md p-6 flex flex-col gap-6 z-10">
-        <h1 className="text-2xl font-bold text-blue-800">Russian Puzzle Gen</h1>
+        <h1 className="text-2xl font-bold text-blue-800">Russian Word Puzzle</h1>
         
         {/* Mode */}
         <div>
