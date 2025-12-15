@@ -12,6 +12,8 @@ export default function Home() {
   const [count, setCount] = useState(10);
   const [width, setWidth] = useState(15);
   const [height, setHeight] = useState(15);
+    const [wordFontSize, setWordFontSize] = useState<number>(16);
+    const [definitionFontSize, setDefinitionFontSize] = useState<number>(12);
   const [showSolution, setShowSolution] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('Ready');
@@ -154,6 +156,30 @@ export default function Home() {
                     min={5} max={30}
                 />
             </div>
+
+            <div>
+                <label className="block text-sm font-medium mb-1">Word Font Size: {wordFontSize}px</label>
+                <input
+                    type="range"
+                    min="10"
+                    max="28"
+                    value={wordFontSize}
+                    onChange={(e) => setWordFontSize(Number(e.target.value))}
+                    className="w-full"
+                />
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium mb-1">Definition Font Size: {definitionFontSize}px</label>
+                <input
+                    type="range"
+                    min="10"
+                    max="20"
+                    value={definitionFontSize}
+                    onChange={(e) => setDefinitionFontSize(Number(e.target.value))}
+                    className="w-full"
+                />
+            </div>
         </div>
 
         <hr />
@@ -198,6 +224,8 @@ export default function Home() {
                 grid={puzzleData.grid} 
                 placedWords={puzzleData.placedWords} 
                 showSolution={showSolution} 
+                wordFontSizePx={wordFontSize}
+                definitionFontSizePx={definitionFontSize}
             />
         )}
         {mode === 'wordsearch' && puzzleData && (
@@ -205,6 +233,8 @@ export default function Home() {
                 grid={puzzleData.grid} 
                 placedWords={puzzleData.placedWords} 
                 showSolution={showSolution} 
+                wordFontSizePx={wordFontSize}
+                definitionFontSizePx={definitionFontSize}
             />
         )}
         

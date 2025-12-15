@@ -5,9 +5,17 @@ interface WordSearchPreviewProps {
   grid: string[][];
   placedWords: PlacedWord[];
   showSolution: boolean;
+  wordFontSizePx: number;
+  definitionFontSizePx: number;
 }
 
-export const WordSearchPreview: React.FC<WordSearchPreviewProps> = ({ grid, placedWords, showSolution }) => {
+export const WordSearchPreview: React.FC<WordSearchPreviewProps> = ({
+  grid,
+  placedWords,
+  showSolution,
+  wordFontSizePx,
+  definitionFontSizePx,
+}) => {
   if (!grid || grid.length === 0) return <div className="text-gray-500">No puzzle generated yet.</div>;
 
   const cellSize = 30;
@@ -47,7 +55,8 @@ export const WordSearchPreview: React.FC<WordSearchPreviewProps> = ({ grid, plac
             return (
               <div 
                 key={`${r}-${c}`} 
-                className={`w-[30px] h-[30px] border border-gray-300 flex items-center justify-center text-sm font-bold ${isSolutionCell ? 'bg-yellow-200' : 'bg-white'}`}
+                className={`w-[30px] h-[30px] border border-gray-300 flex items-center justify-center font-bold ${isSolutionCell ? 'bg-yellow-200' : 'bg-white'}`}
+                style={{ fontSize: `${wordFontSizePx}px` }}
               >
                 {cell}
               </div>
@@ -61,8 +70,8 @@ export const WordSearchPreview: React.FC<WordSearchPreviewProps> = ({ grid, plac
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {placedWords.map((w) => (
                 <div key={w.number} className="flex flex-col">
-                    <span className="font-bold">{w.word}</span>
-                    <span className="text-xs text-gray-600">{w.definition}</span>
+              <span className="font-bold" style={{ fontSize: `${wordFontSizePx}px` }}>{w.word}</span>
+              <span className="text-gray-600" style={{ fontSize: `${definitionFontSizePx}px` }}>{w.definition}</span>
                 </div>
             ))}
         </div>

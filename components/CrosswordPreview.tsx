@@ -5,9 +5,17 @@ interface CrosswordPreviewProps {
   grid: string[][];
   placedWords: PlacedWord[];
   showSolution: boolean;
+  wordFontSizePx: number;
+  definitionFontSizePx: number;
 }
 
-export const CrosswordPreview: React.FC<CrosswordPreviewProps> = ({ grid, placedWords, showSolution }) => {
+export const CrosswordPreview: React.FC<CrosswordPreviewProps> = ({
+  grid,
+  placedWords,
+  showSolution,
+  wordFontSizePx,
+  definitionFontSizePx,
+}) => {
   if (!grid || grid.length === 0) return <div className="text-gray-500">No crossword generated yet.</div>;
 
   const cellSize = 30;
@@ -31,7 +39,8 @@ export const CrosswordPreview: React.FC<CrosswordPreviewProps> = ({ grid, placed
             return (
               <div 
                 key={`${r}-${c}`} 
-                className={`w-[30px] h-[30px] relative flex items-center justify-center text-sm font-bold ${isLetter ? 'bg-white' : 'bg-black'}`}
+                className={`w-[30px] h-[30px] relative flex items-center justify-center font-bold ${isLetter ? 'bg-white' : 'bg-black'}`}
+                style={isLetter ? { fontSize: `${wordFontSizePx}px` } : undefined}
               >
                 {isLetter && (
                   <>
@@ -54,7 +63,7 @@ export const CrosswordPreview: React.FC<CrosswordPreviewProps> = ({ grid, placed
                 <h4 className="font-bold border-b mb-2">Horizontal</h4>
                 <ul className="list-none space-y-2">
                     {placedWords.filter(w => w.direction === 'horizontal').sort((a,b) => a.number - b.number).map(w => (
-                        <li key={w.number} className="text-sm">
+                    <li key={w.number} style={{ fontSize: `${definitionFontSizePx}px` }}>
                             <span className="font-bold">{w.number}.</span> {w.definition}
                         </li>
                     ))}
@@ -64,7 +73,7 @@ export const CrosswordPreview: React.FC<CrosswordPreviewProps> = ({ grid, placed
                 <h4 className="font-bold border-b mb-2">Vertical</h4>
                 <ul className="list-none space-y-2">
                     {placedWords.filter(w => w.direction === 'vertical').sort((a,b) => a.number - b.number).map(w => (
-                        <li key={w.number} className="text-sm">
+                    <li key={w.number} style={{ fontSize: `${definitionFontSizePx}px` }}>
                             <span className="font-bold">{w.number}.</span> {w.definition}
                         </li>
                     ))}
