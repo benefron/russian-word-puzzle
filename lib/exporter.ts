@@ -66,15 +66,51 @@ export async function exportCrosswordPDF(
         return;
     }
 
-    // Reserve some minimum space for clues; if there is more space, the grid will grow.
-    const minCluesH = 90;
+    // Prepare clue content first so we can size the grid to leave enough space.
+    const horizontal = placedWords
+        .filter((w) => w.direction === 'horizontal')
+        .slice()
+        .sort((a, b) => a.number - b.number)
+        .map((w) => `${w.number}. ${w.definition}`);
+
+    const vertical = placedWords
+        .filter((w) => w.direction === 'vertical')
+        .slice()
+        .sort((a, b) => a.number - b.number)
+        .map((w) => `${w.number}. ${w.definition}`);
+
     const maxGridW = pageWidth - margin * 2;
-    const maxGridH = Math.max(10, pageHeight - margin - gridTopY - gap - minCluesH);
+    const targetCluePt = pxToPt(definitionFontSizePx);
 
-    const cellW = Math.floor(Math.min(maxGridW / cols, maxGridH / rows));
-    // Allow cells to be a bit taller than wide to use vertical space better.
-    const cellH = Math.min(cellW * 1.15, maxGridH / rows);
+    // Reserve some minimum space for clues; if we need more (big font / many clues),
+    // shrink the grid FIRST rather than shrinking the clue font.
+    const minCluesH = 90;
+    const maxGridHInitial = Math.max(10, pageHeight - margin - gridTopY - gap - minCluesH);
 
+    let cellW = Math.floor(Math.min(maxGridW / cols, maxGridHInitial / rows));
+    cellW = Math.max(10, cellW);
+    let cellH = Math.max(10, Math.floor(cellW));
+
+    const colGap = 8;
+    const clueAreaW = pageWidth - margin * 2;
+    const clueColW = (clueAreaW - colGap) / 2;
+    const headerFontPt = Math.max(7, Math.floor(targetCluePt * 1.05));
+    const minClueFontPt = 7;
+
+    for (; cellW >= 10; cellW--) {
+        cellH = Math.max(10, Math.floor(cellW));
+        const gridH = cellH * rows;
+        const cluesTopY = gridTopY + gridH + gap;
+        const cluesH = pageHeight - margin - cluesTopY;
+        if (cluesH <= 10) continue;
+
+        // Do the clues fit at the target font size in the remaining height?
+        const okLeft = wrappedListFits(doc, { title: 'Horizontal', items: horizontal, width: clueColW, height: cluesH, fontPt: Math.floor(targetCluePt), headerFontPt });
+        const okRight = wrappedListFits(doc, { title: 'Vertical', items: vertical, width: clueColW, height: cluesH, fontPt: Math.floor(targetCluePt), headerFontPt });
+        if (okLeft && okRight) break;
+    }
+
+    // Final grid geometry
     const gridW = cellW * cols;
     const gridH = cellH * rows;
     const gridX = margin + (maxGridW - gridW) / 2;
@@ -103,20 +139,6 @@ export async function exportCrosswordPDF(
     // Clues underneath (split into Horizontal/Vertical like the app).
     const cluesTopY = gridY + gridH + gap;
     const cluesH = pageHeight - margin - cluesTopY;
-    const targetCluePt = pxToPt(definitionFontSizePx);
-
-    const horizontal = placedWords
-        .filter((w) => w.direction === 'horizontal')
-        .slice()
-        .sort((a, b) => a.number - b.number)
-        .map((w) => `${w.number}. ${w.definition}`);
-
-    const vertical = placedWords
-        .filter((w) => w.direction === 'vertical')
-        .slice()
-        .sort((a, b) => a.number - b.number)
-        .map((w) => `${w.number}. ${w.definition}`);
-
     drawTwoColumnWrappedListsAutoFit(doc, {
         leftTitle: 'Horizontal',
         leftItems: horizontal,
@@ -127,7 +149,7 @@ export async function exportCrosswordPDF(
         width: pageWidth - margin * 2,
         height: cluesH,
         targetFontPt: targetCluePt,
-        minFontPt: 7,
+        minFontPt: minClueFontPt,
     });
 
     doc.save('crossword.pdf');

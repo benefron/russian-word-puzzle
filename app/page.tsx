@@ -260,10 +260,12 @@ export default function Home() {
                         const next = Number(e.target.value) as FontPreset;
                         setFontPreset(next);
                         setWordFontSize(next);
-                        // Keep clues readable but generally smaller than grid letters.
-                        setDefinitionFontSize(clampInt(Math.round(next * 0.6), 12, 36));
+                        // Crossword clue font follows the chosen font size.
+                        // (If you want a separate clue-size control later, we can add it.
+                        // For now, the preset drives both.)
+                        setDefinitionFontSize(next);
 
-                        const limits = computeA4PdfLimits(mode, next, clampInt(Math.round(next * 0.6), 12, 36));
+                        const limits = computeA4PdfLimits(mode, next, next);
                         setWidth(limits.maxGrid);
                         setHeight(limits.maxGrid);
                         setCount(limits.maxWords);

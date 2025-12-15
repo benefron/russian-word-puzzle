@@ -18,9 +18,18 @@ export const WordSearchPreview: React.FC<WordSearchPreviewProps> = ({
 }) => {
   if (!grid || grid.length === 0) return <div className="text-gray-500">No puzzle generated yet.</div>;
 
-  // Make the slider effect obvious even at typical sizes (e.g. 16px).
-  // 16px -> 32px cells, 24px -> 48px cells.
-  const cellSize = Math.max(20, Math.round(wordFontSizePx * 2));
+  // UI preview policy:
+  // - Keep the grid size consistent (no scrolling)
+  // - Scale fonts in the UI only (smaller than the PDF), to give the user the feel
+  const maxPreviewW = 720;
+  const maxPreviewH = 520;
+  const cols = grid[0]?.length ?? 1;
+  const rows = grid.length;
+  const cellSize = Math.max(18, Math.floor(Math.min(maxPreviewW / cols, maxPreviewH / rows)));
+
+  const uiScale = 0.55;
+  const letterFontSize = Math.max(10, Math.min(Math.round(wordFontSizePx * uiScale), Math.floor(cellSize * 0.7)));
+  const definitionFontSizeUi = Math.max(10, Math.round(definitionFontSizePx * uiScale));
 
   return (
     <div className="flex flex-col items-center">
@@ -61,7 +70,7 @@ export const WordSearchPreview: React.FC<WordSearchPreviewProps> = ({
                 style={{
                   width: `${cellSize}px`,
                   height: `${cellSize}px`,
-                  fontSize: `${wordFontSizePx}px`,
+                  fontSize: `${letterFontSize}px`,
                 }}
               >
                 {cell}
@@ -76,8 +85,8 @@ export const WordSearchPreview: React.FC<WordSearchPreviewProps> = ({
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {placedWords.map((w) => (
                 <div key={w.number} className="flex flex-col">
-              <span className="font-bold" style={{ fontSize: `${wordFontSizePx}px` }}>{w.word}</span>
-              <span className="text-gray-600" style={{ fontSize: `${definitionFontSizePx}px` }}>{w.definition}</span>
+              <span className="font-bold" style={{ fontSize: `${letterFontSize}px` }}>{w.word}</span>
+              <span className="text-gray-600" style={{ fontSize: `${definitionFontSizeUi}px` }}>{w.definition}</span>
                 </div>
             ))}
         </div>

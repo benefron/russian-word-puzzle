@@ -18,18 +18,27 @@ export const CrosswordPreview: React.FC<CrosswordPreviewProps> = ({
 }) => {
   if (!grid || grid.length === 0) return <div className="text-gray-500">No crossword generated yet.</div>;
 
-  // Keep cells comfortably larger than letters; make changes visible across the slider.
-  const cellSize = Math.max(24, Math.round(wordFontSizePx * 2));
-  const numberFontSize = Math.max(12, Math.round(wordFontSizePx * 0.75));
+  // UI preview policy:
+  // - Keep the grid size consistent (no scrolling)
+  // - Scale fonts in the UI only (smaller than the PDF), to give the user the feel
+  const maxPreviewW = 720;
+  const maxPreviewH = 520;
+  const cols = grid[0]?.length ?? 1;
+  const rows = grid.length;
+  const cellSize = Math.max(18, Math.floor(Math.min(maxPreviewW / cols, maxPreviewH / rows)));
+
+  const uiScale = 0.55;
+  const letterFontSize = Math.max(10, Math.min(Math.round(wordFontSizePx * uiScale), Math.floor(cellSize * 0.7)));
+  const numberFontSize = Math.max(9, Math.min(16, Math.round(letterFontSize * 0.65)));
+  const clueFontSize = Math.max(10, Math.round(definitionFontSizePx * uiScale));
 
   return (
     <div className="flex flex-col items-center">
-      <div 
-        className="border border-black bg-black inline-block"
-        style={{ 
-            display: 'grid', 
-            gridTemplateColumns: `repeat(${grid[0].length}, ${cellSize}px)`,
-            gap: '1px'
+      <div className="border border-black bg-black inline-block"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${grid[0].length}, ${cellSize}px)`,
+          gap: '1px'
         }}
       >
         {grid.map((row, r) => (
@@ -45,7 +54,7 @@ export const CrosswordPreview: React.FC<CrosswordPreviewProps> = ({
                 style={{
                   width: `${cellSize}px`,
                   height: `${cellSize}px`,
-                  ...(isLetter ? { fontSize: `${wordFontSizePx}px` } : undefined),
+                  ...(isLetter ? { fontSize: `${letterFontSize}px` } : undefined),
                 }}
               >
                 {isLetter && (
@@ -77,7 +86,7 @@ export const CrosswordPreview: React.FC<CrosswordPreviewProps> = ({
                 <h4 className="font-bold border-b mb-2">Horizontal</h4>
                 <ul className="list-none space-y-2">
                     {placedWords.filter(w => w.direction === 'horizontal').sort((a,b) => a.number - b.number).map(w => (
-                    <li key={w.number} style={{ fontSize: `${definitionFontSizePx}px` }}>
+                  <li key={`h-${w.number}-${w.word}`} style={{ fontSize: `${clueFontSize}px` }}>
                             <span className="font-bold">{w.number}.</span> {w.definition}
                         </li>
                     ))}
@@ -87,7 +96,7 @@ export const CrosswordPreview: React.FC<CrosswordPreviewProps> = ({
                 <h4 className="font-bold border-b mb-2">Vertical</h4>
                 <ul className="list-none space-y-2">
                     {placedWords.filter(w => w.direction === 'vertical').sort((a,b) => a.number - b.number).map(w => (
-                    <li key={w.number} style={{ fontSize: `${definitionFontSizePx}px` }}>
+                  <li key={`v-${w.number}-${w.word}`} style={{ fontSize: `${clueFontSize}px` }}>
                             <span className="font-bold">{w.number}.</span> {w.definition}
                         </li>
                     ))}
