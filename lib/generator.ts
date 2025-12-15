@@ -32,17 +32,77 @@ export class CrosswordGenerator {
   }
 
   generate(wordsData: WordItem[]): { grid: string[][], placedWords: PlacedWord[] } {
-    // Sort words by length (longest first)
-    const sortedWords = [...wordsData].sort((a, b) => b.word.length - a.word.length);
+    // The old algorithm picked a random intersection placement for each word,
+    // which often clusters everything around the first word.
+    // We now do multiple attempts with randomized choices and keep the best.
 
-    this.grid = Array(this.height).fill(null).map(() => Array(this.width).fill(''));
-    this.placedWords = [];
+    const attempts = 120;
+    const baseSorted = [...wordsData].sort((a, b) => b.word.length - a.word.length);
 
-    for (const wordItem of sortedWords) {
-      this._placeWord(wordItem);
+    let bestGrid: string[][] | null = null;
+    let bestPlaced: PlacedWord[] = [];
+    let bestScore = -Infinity;
+
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      this.grid = Array(this.height).fill(null).map(() => Array(this.width).fill(''));
+      this.placedWords = [];
+
+      // Randomize within equal-ish lengths to create variety across attempts.
+      const sortedWords = [...baseSorted].sort((a, b) => {
+        const d = b.word.length - a.word.length;
+        if (d !== 0) return d;
+        return Math.random() - 0.5;
+      });
+
+      for (const wordItem of sortedWords) {
+        this._placeWord(wordItem);
+      }
+
+      const score = this._scoreCurrentLayout();
+      if (score > bestScore) {
+        bestScore = score;
+        bestGrid = this.grid.map(row => [...row]);
+        bestPlaced = this.placedWords.map(w => ({ ...w }));
+      }
     }
 
+    this.grid = bestGrid ?? this.grid;
+    this.placedWords = bestPlaced;
+
+    // Reduce large continuous empty areas by returning the tightest bounding box
+    // around the crossword (plus a small margin). This also reduces the overall
+    // percentage of black squares.
+    this._cropToBoundingBox(1);
+
+    // Assign crossword-style clue numbers based on start cells (top-to-bottom, left-to-right).
+    // If a cell starts both a horizontal and vertical word, they MUST share the same number.
+    this._assignClueNumbers();
+
     return { grid: this.grid, placedWords: this.placedWords };
+  }
+
+  private _assignClueNumbers() {
+    const starts: Array<{ r: number; c: number; key: string }> = [];
+    const seen = new Set<string>();
+
+    for (const w of this.placedWords) {
+      const key = `${w.row}-${w.col}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      starts.push({ r: w.row, c: w.col, key });
+    }
+
+    starts.sort((a, b) => (a.r - b.r) || (a.c - b.c));
+    const numberByKey = new Map<string, number>();
+    for (let i = 0; i < starts.length; i++) {
+      numberByKey.set(starts[i].key, i + 1);
+    }
+
+    this.placedWords = this.placedWords.map((w) => {
+      const key = `${w.row}-${w.col}`;
+      const number = numberByKey.get(key) ?? 0;
+      return { ...w, number };
+    });
   }
 
   private _placeWord(wordItem: WordItem) {
@@ -52,7 +112,13 @@ export class CrosswordGenerator {
     if (this.placedWords.length === 0) {
       const startRow = Math.floor(this.height / 2);
       const startCol = Math.floor((this.width - word.length) / 2);
-      if (this._canPlace(word, startRow, startCol, 'horizontal')) {
+      const firstDir: Direction = Math.random() < 0.5 ? 'horizontal' : 'vertical';
+      const firstRow = firstDir === 'horizontal' ? startRow : Math.floor((this.height - word.length) / 2);
+      const firstCol = firstDir === 'horizontal' ? startCol : Math.floor(this.width / 2);
+
+      if (this._canPlace(word, firstRow, firstCol, firstDir)) {
+        this._addWordToGrid(word, wordItem.definition, firstRow, firstCol, firstDir);
+      } else if (this._canPlace(word, startRow, startCol, 'horizontal')) {
         this._addWordToGrid(word, wordItem.definition, startRow, startCol, 'horizontal');
       }
       return;
@@ -80,10 +146,175 @@ export class CrosswordGenerator {
       }
     }
 
+    // Prefer placements that create more intersections and spread the crossword.
     if (possiblePlacements.length > 0) {
-      const choice = possiblePlacements[Math.floor(Math.random() * possiblePlacements.length)];
+      const scored = possiblePlacements
+        .map(p => ({
+          ...p,
+          score: this._scorePlacement(word, p.r, p.c, p.direction)
+        }))
+        .sort((a, b) => b.score - a.score);
+
+      // Take one of the top few to keep some variety.
+      const pickFrom = Math.min(5, scored.length);
+      const choice = scored[Math.floor(Math.random() * pickFrom)];
       this._addWordToGrid(word, wordItem.definition, choice.r, choice.c, choice.direction);
+      return;
     }
+
+    // If no intersection placement exists, do not place the word.
+    // This guarantees the crossword remains a single connected component
+    // (no isolated "islands" of words).
+    return;
+  }
+
+  private _scorePlacement(word: string, row: number, col: number, direction: Direction): number {
+    // Higher is better.
+    // - reward intersections
+    // - reward spreading the bounding box (coverage)
+    // - slightly reward being nearer center (keeps crossword readable)
+    const intersections = this._countIntersectionsForPlacement(word, row, col, direction);
+    const bboxDelta = this._bboxAreaDeltaIfPlaced(word, row, col, direction);
+
+    const centerR = (this.height - 1) / 2;
+    const centerC = (this.width - 1) / 2;
+    const placedCenter = this._placementCenter(word, row, col, direction);
+    const distToCenter = Math.abs(placedCenter.r - centerR) + Math.abs(placedCenter.c - centerC);
+
+    // Prefer intersections and compactness (smaller bbox expansion).
+    // This tends to reduce black-square percentage once we crop to the bbox.
+    return intersections * 120 - bboxDelta * 8 - distToCenter * 0.2;
+  }
+
+  private _placementCenter(word: string, row: number, col: number, direction: Direction): { r: number, c: number } {
+    if (direction === 'horizontal') {
+      return { r: row, c: col + (word.length - 1) / 2 };
+    }
+    return { r: row + (word.length - 1) / 2, c: col };
+  }
+
+  private _countIntersectionsForPlacement(word: string, row: number, col: number, direction: Direction): number {
+    let count = 0;
+    if (direction === 'horizontal') {
+      for (let i = 0; i < word.length; i++) {
+        if (row < 0 || row >= this.height) continue;
+        const c = col + i;
+        if (c < 0 || c >= this.width) continue;
+        if (this.grid[row][c] === word[i]) count++;
+      }
+    } else {
+      for (let i = 0; i < word.length; i++) {
+        const r = row + i;
+        if (r < 0 || r >= this.height) continue;
+        if (col < 0 || col >= this.width) continue;
+        if (this.grid[r][col] === word[i]) count++;
+      }
+    }
+    return count;
+  }
+
+  private _bboxAreaDeltaIfPlaced(word: string, row: number, col: number, direction: Direction): number {
+    const before = this._boundingBox();
+    const after = this._boundingBoxWithPlacement(word, row, col, direction, before);
+
+    const beforeArea = before ? (before.maxR - before.minR + 1) * (before.maxC - before.minC + 1) : 0;
+    const afterArea = (after.maxR - after.minR + 1) * (after.maxC - after.minC + 1);
+
+    return afterArea - beforeArea;
+  }
+
+  private _boundingBox(): { minR: number, maxR: number, minC: number, maxC: number } | null {
+    let minR = Infinity;
+    let minC = Infinity;
+    let maxR = -Infinity;
+    let maxC = -Infinity;
+
+    for (let r = 0; r < this.height; r++) {
+      for (let c = 0; c < this.width; c++) {
+        if (this.grid[r][c] !== '') {
+          minR = Math.min(minR, r);
+          minC = Math.min(minC, c);
+          maxR = Math.max(maxR, r);
+          maxC = Math.max(maxC, c);
+        }
+      }
+    }
+
+    if (!isFinite(minR)) return null;
+    return { minR, maxR, minC, maxC };
+  }
+
+  private _boundingBoxWithPlacement(
+    word: string,
+    row: number,
+    col: number,
+    direction: Direction,
+    current: { minR: number, maxR: number, minC: number, maxC: number } | null,
+  ): { minR: number, maxR: number, minC: number, maxC: number } {
+    let minR = current ? current.minR : Infinity;
+    let minC = current ? current.minC : Infinity;
+    let maxR = current ? current.maxR : -Infinity;
+    let maxC = current ? current.maxC : -Infinity;
+
+    if (direction === 'horizontal') {
+      minR = Math.min(minR, row);
+      maxR = Math.max(maxR, row);
+      minC = Math.min(minC, col);
+      maxC = Math.max(maxC, col + word.length - 1);
+    } else {
+      minR = Math.min(minR, row);
+      maxR = Math.max(maxR, row + word.length - 1);
+      minC = Math.min(minC, col);
+      maxC = Math.max(maxC, col);
+    }
+
+    return { minR, maxR, minC, maxC };
+  }
+
+  private _scoreCurrentLayout(): number {
+    const placed = this.placedWords.length;
+    if (placed === 0) return -Infinity;
+
+    let occupied = 0;
+    for (let r = 0; r < this.height; r++) {
+      for (let c = 0; c < this.width; c++) {
+        if (this.grid[r][c] !== '') occupied++;
+      }
+    }
+
+    const bbox = this._boundingBox();
+    const bboxArea = bbox ? (bbox.maxR - bbox.minR + 1) * (bbox.maxC - bbox.minC + 1) : 0;
+    const coverage = bboxArea / (this.width * this.height);
+    const density = bboxArea > 0 ? occupied / bboxArea : 0;
+
+    // Heuristic: prioritize placing more words and using more cells,
+    // but also encourage spreading across the grid instead of clustering.
+    // We now prioritize density (fewer internal holes) and more occupied cells.
+    return placed * 700 + occupied * 20 + density * 2000 + coverage * 300;
+  }
+
+  private _cropToBoundingBox(margin: number) {
+    const bbox = this._boundingBox();
+    if (!bbox) return;
+
+    const minR = Math.max(0, bbox.minR - margin);
+    const maxR = Math.min(this.height - 1, bbox.maxR + margin);
+    const minC = Math.max(0, bbox.minC - margin);
+    const maxC = Math.min(this.width - 1, bbox.maxC + margin);
+
+    const nextGrid: string[][] = [];
+    for (let r = minR; r <= maxR; r++) {
+      nextGrid.push(this.grid[r].slice(minC, maxC + 1));
+    }
+
+    this.grid = nextGrid;
+    this.height = nextGrid.length;
+    this.width = nextGrid[0]?.length ?? 0;
+    this.placedWords = this.placedWords.map(w => ({
+      ...w,
+      row: w.row - minR,
+      col: w.col - minC,
+    }));
   }
 
   private _canPlace(word: string, row: number, col: number, direction: Direction): boolean {
@@ -154,7 +385,8 @@ export class CrosswordGenerator {
       row,
       col,
       direction,
-      number: this.placedWords.length + 1
+      // Placeholder; real numbering is assigned after generation.
+      number: 0
     });
   }
 }

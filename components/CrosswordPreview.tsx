@@ -18,7 +18,9 @@ export const CrosswordPreview: React.FC<CrosswordPreviewProps> = ({
 }) => {
   if (!grid || grid.length === 0) return <div className="text-gray-500">No crossword generated yet.</div>;
 
-  const cellSize = 30;
+  // Keep cells comfortably larger than letters; make changes visible across the slider.
+  const cellSize = Math.max(24, Math.round(wordFontSizePx * 2));
+  const numberFontSize = Math.max(12, Math.round(wordFontSizePx * 0.75));
 
   return (
     <div className="flex flex-col items-center">
@@ -39,13 +41,25 @@ export const CrosswordPreview: React.FC<CrosswordPreviewProps> = ({
             return (
               <div 
                 key={`${r}-${c}`} 
-                className={`w-[30px] h-[30px] relative flex items-center justify-center font-bold ${isLetter ? 'bg-white' : 'bg-black'}`}
-                style={isLetter ? { fontSize: `${wordFontSizePx}px` } : undefined}
+                className={`relative flex items-center justify-center font-bold ${isLetter ? 'bg-white' : 'bg-black'}`}
+                style={{
+                  width: `${cellSize}px`,
+                  height: `${cellSize}px`,
+                  ...(isLetter ? { fontSize: `${wordFontSizePx}px` } : undefined),
+                }}
               >
                 {isLetter && (
                   <>
                     {wordStart && (
-                      <span className="absolute top-0 left-0 text-[8px] leading-none p-[1px]">{wordStart.number}</span>
+                      <span
+                        className="absolute top-0 left-0 leading-none"
+                        style={{
+                          fontSize: `${numberFontSize}px`,
+                          padding: '2px',
+                        }}
+                      >
+                        {wordStart.number}
+                      </span>
                     )}
                     {showSolution ? cell : ''}
                   </>

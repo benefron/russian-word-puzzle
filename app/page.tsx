@@ -1,10 +1,100 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { CrosswordGenerator, WordSearchGenerator, PlacedWord, WordItem } from '@/lib/generator';
 import { exportCrosswordPDF, exportWordSearchPDF } from '@/lib/exporter';
 import { CrosswordPreview } from '@/components/CrosswordPreview';
 import { WordSearchPreview } from '@/components/WordSearchPreview';
+
+const FONT_PRESETS = [16, 24, 36, 40, 60] as const;
+type FontPreset = (typeof FONT_PRESETS)[number];
+
+function clampInt(value: number, min: number, max: number) {
+    return Math.max(min, Math.min(max, Math.trunc(value)));
+}
+
+function recommendedCrosswordCount(width: number, height: number) {
+    // Heuristic: crossword fill tends to be sparse; this gives a reasonable default.
+    // 15x15 -> ~13 words, 20x20 -> ~22 words.
+    const area = width * height;
+    return clampInt(area / 18, 5, 40);
+}
+
+function recommendedSquareGridForCount(count: number) {
+    // Inverse heuristic: pick a roughly square grid that can hold the desired word count.
+    const targetArea = count * 18;
+    const size = Math.sqrt(targetArea);
+    const clamped = clampInt(size, 5, 30);
+    return { width: clamped, height: clamped };
+}
+
+function pxToPt(px: number) {
+    return px * 0.75;
+}
+
+function ptToMm(pt: number) {
+    return pt * 0.3527777778;
+}
+
+function computeA4PdfLimits(
+    mode: 'crossword' | 'wordsearch',
+    wordFontSizePx: number,
+    clueFontSizePx: number,
+) {
+    // A4 portrait in mm
+    const pageW = 210;
+    const pageH = 297;
+    const margin = 10;
+    const topY = 18;
+    const gap = 6;
+
+    // New PDF layout: grid spans full width at top; list(s) are underneath.
+    const gridW = pageW - margin * 2;
+
+    if (mode === 'wordsearch') {
+        // Reserve minimum space for the words list.
+        const minListH = 45;
+        const maxGridH = pageH - topY - margin - gap - minListH;
+        const requiredCellMm = ptToMm(pxToPt(wordFontSizePx)) * 1.15;
+        const maxGrid = clampInt(
+            Math.floor(Math.min(gridW / requiredCellMm, maxGridH / requiredCellMm)),
+            5,
+            30
+        );
+
+        const gridH = maxGrid * requiredCellMm;
+        const listH = Math.max(10, pageH - topY - gridH - gap - margin);
+
+        // Words list under grid (up to 3 columns).
+        const listFontPt = pxToPt(wordFontSizePx) * 0.85;
+        const lineH = ptToMm(listFontPt) * 1.25;
+        const rowsPerCol = Math.max(1, Math.floor(listH / lineH));
+        const cols = 3;
+        const maxWords = clampInt(rowsPerCol * cols, 5, 60);
+        return { maxGrid, maxWords };
+    }
+
+    // crossword
+    const minCluesH = 90;
+    const maxGridH = pageH - topY - margin - gap - minCluesH;
+    const requiredCellMm = ptToMm(pxToPt(wordFontSizePx)) * 1.1;
+    const maxGrid = clampInt(
+        Math.floor(Math.min(gridW / requiredCellMm, maxGridH / requiredCellMm)),
+        5,
+        30
+    );
+
+    const gridH = maxGrid * requiredCellMm;
+    const cluesH = Math.max(10, pageH - topY - gridH - gap - margin);
+
+    // Clues under grid: two columns (Horizontal/Vertical).
+    const clueFontPt = pxToPt(clueFontSizePx);
+    const clueLineH = ptToMm(clueFontPt) * 1.25;
+    const clueRowsPerCol = Math.max(1, Math.floor(cluesH / clueLineH));
+    const clueCols = 2;
+    const maxWords = clampInt(clueRowsPerCol * clueCols, 5, 60);
+    return { maxGrid, maxWords };
+}
 
 export default function Home() {
   const [mode, setMode] = useState<'crossword' | 'wordsearch'>('crossword');
@@ -12,13 +102,22 @@ export default function Home() {
   const [count, setCount] = useState(10);
   const [width, setWidth] = useState(15);
   const [height, setHeight] = useState(15);
-    const [wordFontSize, setWordFontSize] = useState<number>(16);
-    const [definitionFontSize, setDefinitionFontSize] = useState<number>(12);
+    const [fontPreset, setFontPreset] = useState<FontPreset>(24);
+    const [wordFontSize, setWordFontSize] = useState<number>(24);
+    const [definitionFontSize, setDefinitionFontSize] = useState<number>(14);
   const [showSolution, setShowSolution] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('Ready');
 
   const [puzzleData, setPuzzleData] = useState<{ grid: string[][], placedWords: PlacedWord[] } | null>(null);
+
+    const crosswordAutoCount = useMemo(() => {
+        return mode === 'crossword' ? recommendedCrosswordCount(width, height) : null;
+    }, [mode, width, height]);
+
+    const pdfLimits = useMemo(() => {
+        return computeA4PdfLimits(mode, wordFontSize, definitionFontSize);
+    }, [mode, wordFontSize, definitionFontSize]);
 
   const handleGenerate = async () => {
     setLoading(true);
@@ -68,9 +167,15 @@ export default function Home() {
     if (!puzzleData) return;
     
     if (mode === 'crossword') {
-        await exportCrosswordPDF(puzzleData.grid, puzzleData.placedWords);
+                await exportCrosswordPDF(puzzleData.grid, puzzleData.placedWords, {
+                    wordFontSizePx: wordFontSize,
+                    definitionFontSizePx: definitionFontSize,
+                });
     } else {
-        await exportWordSearchPDF(puzzleData.grid, puzzleData.placedWords);
+                await exportWordSearchPDF(puzzleData.grid, puzzleData.placedWords, {
+                    wordFontSizePx: wordFontSize,
+                    definitionFontSizePx: definitionFontSize,
+                });
     }
   };
 
@@ -85,11 +190,32 @@ export default function Home() {
             <h2 className="font-bold mb-2">Mode</h2>
             <div className="flex flex-col gap-2">
                 <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" checked={mode === 'crossword'} onChange={() => setMode('crossword')} />
+                                        <input
+                                            type="radio"
+                                            checked={mode === 'crossword'}
+                                            onChange={() => {
+                                                setMode('crossword');
+                                                // Set sensible defaults for PDF fit
+                                                const limits = computeA4PdfLimits('crossword', wordFontSize, definitionFontSize);
+                                                setWidth(limits.maxGrid);
+                                                setHeight(limits.maxGrid);
+                                                setCount(limits.maxWords);
+                                            }}
+                                        />
                     Crossword
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" checked={mode === 'wordsearch'} onChange={() => setMode('wordsearch')} />
+                                        <input
+                                            type="radio"
+                                            checked={mode === 'wordsearch'}
+                                            onChange={() => {
+                                                setMode('wordsearch');
+                                                const limits = computeA4PdfLimits('wordsearch', wordFontSize, definitionFontSize);
+                                                setWidth(limits.maxGrid);
+                                                setHeight(limits.maxGrid);
+                                                setCount(limits.maxWords);
+                                            }}
+                                        />
                     Word Search
                 </label>
             </div>
@@ -126,14 +252,62 @@ export default function Home() {
             <h2 className="font-bold">Settings</h2>
             
             <div>
+                <label className="block text-sm font-medium mb-1">Font Size (PDF fit): {fontPreset}px</label>
+                <select
+                    className="w-full border rounded px-2 py-1"
+                    value={fontPreset}
+                    onChange={(e) => {
+                        const next = Number(e.target.value) as FontPreset;
+                        setFontPreset(next);
+                        setWordFontSize(next);
+                        // Keep clues readable but generally smaller than grid letters.
+                        setDefinitionFontSize(clampInt(Math.round(next * 0.6), 12, 36));
+
+                        const limits = computeA4PdfLimits(mode, next, clampInt(Math.round(next * 0.6), 12, 36));
+                        setWidth(limits.maxGrid);
+                        setHeight(limits.maxGrid);
+                        setCount(limits.maxWords);
+                    }}
+                >
+                    {FONT_PRESETS.map((s) => (
+                        <option key={s} value={s}>{s}px</option>
+                    ))}
+                </select>
+                <div className="text-xs text-gray-500 mt-1">
+                    Max for single-page A4: grid {pdfLimits.maxGrid}×{pdfLimits.maxGrid}, words ≤ {pdfLimits.maxWords}
+                </div>
+            </div>
+
+            <div>
                 <label className="block text-sm font-medium mb-1">Word Count</label>
                 <input 
                     type="number" 
                     value={count} 
-                    onChange={(e) => setCount(Number(e.target.value))}
+                    onChange={(e) => {
+                        if (e.target.value === '') return;
+                        const raw = Number(e.target.value);
+                        if (Number.isNaN(raw)) return;
+                        setCount(clampInt(raw, 1, pdfLimits.maxWords));
+                    }}
+                    onBlur={() => {
+                        // Clamp to PDF limits and then apply crossword coupling.
+                        setCount((prev) => clampInt(prev, 1, pdfLimits.maxWords));
+                        if (mode === 'crossword') {
+                            const nextGrid = recommendedSquareGridForCount(clampInt(count, 1, pdfLimits.maxWords));
+                            const nextW = clampInt(nextGrid.width, 5, pdfLimits.maxGrid);
+                            const nextH = clampInt(nextGrid.height, 5, pdfLimits.maxGrid);
+                            setWidth(nextW);
+                            setHeight(nextH);
+                        }
+                    }}
                     className="w-full border rounded px-2 py-1"
-                    min={1} max={50}
+                    min={1} max={pdfLimits.maxWords}
                 />
+                                {mode === 'crossword' && crosswordAutoCount !== null && (
+                                    <div className="text-xs text-gray-500 mt-1">
+                                        Suggested for this grid: {crosswordAutoCount}
+                                    </div>
+                                )}
             </div>
 
             <div>
@@ -141,9 +315,19 @@ export default function Home() {
                 <input 
                     type="number" 
                     value={width} 
-                    onChange={(e) => setWidth(Number(e.target.value))}
+                    onChange={(e) => {
+                        if (e.target.value === '') return;
+                        const raw = Number(e.target.value);
+                        if (Number.isNaN(raw)) return;
+                        setWidth(clampInt(raw, 5, pdfLimits.maxGrid));
+                    }}
+                    onBlur={() => {
+                        setWidth((prev) => clampInt(prev, 5, pdfLimits.maxGrid));
+                        if (mode !== 'crossword') return;
+                        setCount((prev) => clampInt(recommendedCrosswordCount(width, height), 1, pdfLimits.maxWords));
+                    }}
                     className="w-full border rounded px-2 py-1"
-                    min={5} max={30}
+                    min={5} max={pdfLimits.maxGrid}
                 />
             </div>
             <div>
@@ -151,33 +335,19 @@ export default function Home() {
                 <input 
                     type="number" 
                     value={height} 
-                    onChange={(e) => setHeight(Number(e.target.value))}
+                    onChange={(e) => {
+                        if (e.target.value === '') return;
+                        const raw = Number(e.target.value);
+                        if (Number.isNaN(raw)) return;
+                        setHeight(clampInt(raw, 5, pdfLimits.maxGrid));
+                    }}
+                    onBlur={() => {
+                        setHeight((prev) => clampInt(prev, 5, pdfLimits.maxGrid));
+                        if (mode !== 'crossword') return;
+                        setCount((prev) => clampInt(recommendedCrosswordCount(width, height), 1, pdfLimits.maxWords));
+                    }}
                     className="w-full border rounded px-2 py-1"
-                    min={5} max={30}
-                />
-            </div>
-
-            <div>
-                <label className="block text-sm font-medium mb-1">Word Font Size: {wordFontSize}px</label>
-                <input
-                    type="range"
-                    min="10"
-                    max="28"
-                    value={wordFontSize}
-                    onChange={(e) => setWordFontSize(Number(e.target.value))}
-                    className="w-full"
-                />
-            </div>
-
-            <div>
-                <label className="block text-sm font-medium mb-1">Definition Font Size: {definitionFontSize}px</label>
-                <input
-                    type="range"
-                    min="10"
-                    max="20"
-                    value={definitionFontSize}
-                    onChange={(e) => setDefinitionFontSize(Number(e.target.value))}
-                    className="w-full"
+                    min={5} max={pdfLimits.maxGrid}
                 />
             </div>
         </div>

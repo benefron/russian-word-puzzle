@@ -18,7 +18,9 @@ export const WordSearchPreview: React.FC<WordSearchPreviewProps> = ({
 }) => {
   if (!grid || grid.length === 0) return <div className="text-gray-500">No puzzle generated yet.</div>;
 
-  const cellSize = 30;
+  // Make the slider effect obvious even at typical sizes (e.g. 16px).
+  // 16px -> 32px cells, 24px -> 48px cells.
+  const cellSize = Math.max(20, Math.round(wordFontSizePx * 2));
 
   return (
     <div className="flex flex-col items-center">
@@ -55,8 +57,12 @@ export const WordSearchPreview: React.FC<WordSearchPreviewProps> = ({
             return (
               <div 
                 key={`${r}-${c}`} 
-                className={`w-[30px] h-[30px] border border-gray-300 flex items-center justify-center font-bold ${isSolutionCell ? 'bg-yellow-200' : 'bg-white'}`}
-                style={{ fontSize: `${wordFontSizePx}px` }}
+                className={`border border-gray-300 flex items-center justify-center font-bold ${isSolutionCell ? 'bg-yellow-200' : 'bg-white'}`}
+                style={{
+                  width: `${cellSize}px`,
+                  height: `${cellSize}px`,
+                  fontSize: `${wordFontSizePx}px`,
+                }}
               >
                 {cell}
               </div>
